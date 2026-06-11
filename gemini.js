@@ -400,6 +400,30 @@ function makeSilence(seconds, rate) {
   return new Uint8Array(Math.round(seconds * rate) * 2); // 16ビット=2バイト/サンプル
 }
 
+/* 収録ずみ音声の貯金箱。
+   途中で失敗してもう一度ボタンを押したとき、
+   成功していた部分は通信せずに一瞬で再利用できる */
+const speechCache = new Map();
+
+function cacheSet(key, audio) {
+  if (speechCache.size > 120) speechCache.clear(); // ためこみすぎ防止
+  speechCache.set(key, audio);
+}
+
+/* 1セグメントの収録。「AIが音声を返さない（OTHER等）」が続いたら、
+   演技指示を外したシンプルな読み上げ方に切り替えて再挑戦する */
+async function ttsSegmentWithFallback(seg, cast, genre, voice, onWait) {
+  try {
+    return await ttsCall(buildSegmentPrompt(seg, cast, genre), voice, onWait);
+  } catch (err) {
+    if (!/音声を返しませんでした/.test(err.message)) throw err;
+    const plain = seg.text.replace(/（[^）]*）/g, "").replace(/\([^)]*\)/g, "").trim();
+    if (!plain) throw err;
+    console.warn("シンプル読み上げで再挑戦:", seg.speaker);
+    return await ttsCall("次の日本語の文章を、自然なトーンで読み上げてください。\n\n" + plain, voice, onWait);
+  }
+}
+
 /* 本体：台本を解析し、役ごとに別の声で収録してつなぎ合わせる */
 async function generateSpeech(script, genre, onProgress) {
   const parsed = parseScript(script);
@@ -421,12 +445,17 @@ async function generateSpeech(script, genre, onProgress) {
   // まずタイトルコール：少し間 → 題名 → たっぷり間 → 本編
   if (parsed.title) {
     if (onProgress) onProgress("タイトルコールを収録中…");
-    const titleAudio = await ttsCall(
-      "これはラジオドラマ番組の冒頭のタイトルコールです。次の題名だけを、ゆっくり、印象的に読み上げてください。\n\n" +
-      "『" + parsed.title + "』",
-      voices["ナレーション"],
-      () => { if (onProgress) onProgress("AIが混み合っています。順番待ち中…"); }
-    );
+    const titleKey = "TITLE|" + voices["ナレーション"] + "|" + parsed.title;
+    let titleAudio = speechCache.get(titleKey);
+    if (!titleAudio) {
+      titleAudio = await ttsCall(
+        "これはラジオドラマ番組の冒頭のタイトルコールです。次の題名だけを、ゆっくり、印象的に読み上げてください。\n\n" +
+        "『" + parsed.title + "』",
+        voices["ナレーション"],
+        () => { if (onProgress) onProgress("AIが混み合っています。順番待ち中…"); }
+      );
+      cacheSet(titleKey, titleAudio);
+    }
     rate = titleAudio.rate;
     chunks.push(makeSilence(0.8, rate));
     offsetSec += 0.8;
@@ -443,11 +472,16 @@ async function generateSpeech(script, genre, onProgress) {
       offsetSec += 1.4;
       continue;
     }
-    const audio = await ttsCall(
-      buildSegmentPrompt(seg, parsed.cast, genre),
-      voices[seg.speaker] || voices["ナレーション"],
-      () => { if (onProgress) onProgress("AIが混み合っています。順番待ち中…（" + done + "/" + total + " 収録済み）"); }
-    );
+    const voice = voices[seg.speaker] || voices["ナレーション"];
+    const cacheKey = voice + "|" + seg.speaker + "|" + seg.text;
+    let audio = speechCache.get(cacheKey);
+    if (!audio) {
+      audio = await ttsSegmentWithFallback(
+        seg, parsed.cast, genre, voice,
+        () => { if (onProgress) onProgress("AIが混み合っています。順番待ち中…（" + done + "/" + total + " 収録済み）"); }
+      );
+      cacheSet(cacheKey, audio);
+    }
     rate = audio.rate;
     chunks.push(audio.bytes);
     offsetSec += audio.bytes.length / (rate * 2);
