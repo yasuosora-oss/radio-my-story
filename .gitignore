@@ -1,0 +1,6 @@
+# GitHubにアップロードしない、このパソコン専用のファイル
+.claude/
+GitHub公開用/
+serve.py
+*.bat
+_*.txt

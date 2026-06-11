@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0c0a14">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Radio My Story｜AIリレーボイスドラマ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- 上部の常設ヘッダー（ON AIR ランプ付き） -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-en">RADIO MY STORY</span>
+    </div>
+    <div class="onair" id="onairLamp" aria-hidden="true">ON AIR</div>
+  </header>
+
+  <main id="app">
+
+    <!-- ============ 画面1：初期設定 ============ -->
+    <section class="screen active" id="screen-setup">
+      <div class="hero">
+        <p class="hero-step">STEP 1</p>
+        <h1 class="hero-title">こんやの<br>しゅつえんしゃは？</h1>
+        <p class="hero-sub">スマホを回して、ひとりずつ物語を録音。<br>最後にAIがラジオドラマに仕上げます。</p>
+      </div>
+
+      <div class="count-grid" role="group" aria-label="参加人数を選択">
+        <button class="count-btn" data-count="2"><span class="count-num">2</span><span class="count-unit">人</span></button>
+        <button class="count-btn" data-count="3"><span class="count-num">3</span><span class="count-unit">人</span></button>
+        <button class="count-btn" data-count="4"><span class="count-num">4</span><span class="count-unit">人</span></button>
+        <button class="count-btn" data-count="5"><span class="count-num">5</span><span class="count-unit">人</span></button>
+      </div>
+
+      <div class="key-form">
+        <p class="form-label">🔑 AIのカギ（Gemini APIキー）</p>
+        <input type="password" id="apiKeyInput" placeholder="AIza… ではじまるキーを貼り付け" autocomplete="off">
+        <label class="key-save-row">
+          <input type="checkbox" id="apiKeySave">
+          この端末に記憶する（自分のスマホ・PCのときだけ推奨）
+        </label>
+        <details class="key-help">
+          <summary>🔑 キーの取り方（無料・3分くらい）</summary>
+          <ol>
+            <li>スマホかPCで「Google AI Studio」を検索して開く</li>
+            <li>Googleアカウントでログイン</li>
+            <li>「Get API key（APIキーを取得）」を押す</li>
+            <li>「AIza…」ではじまる長い文字列をコピーして、上の欄に貼り付け</li>
+          </ol>
+        </details>
+      </div>
+
+      <button class="btn btn-primary btn-big" id="btnStart" disabled>収録スタート 🎙️</button>
+    </section>
+
+    <!-- ============ 画面2：録音リレー ============ -->
+    <section class="screen" id="screen-relay">
+
+      <!-- リレーの進み具合（人数分のドット） -->
+      <div class="relay-progress" id="relayProgress" aria-label="リレーの進行状況"></div>
+      <p class="scene-counter" id="sceneCounter">SCENE 1</p>
+
+      <div class="player-card">
+        <p class="player-label">いまのプレイヤー</p>
+        <p class="player-name" id="playerName">ユーザーA</p>
+        <p class="player-hint" id="playerHint">マイクに向かって物語のつづきをどうぞ！</p>
+      </div>
+
+      <!-- 録音ビジュアル：波形＋タイマー -->
+      <div class="visualizer-wrap" id="visualizerWrap">
+        <canvas id="waveCanvas" width="640" height="160" aria-hidden="true"></canvas>
+        <p class="rec-timer" id="recTimer">00:00</p>
+      </div>
+
+      <!-- 録音コントロール（状態によって切り替え） -->
+      <div class="rec-controls">
+        <button class="rec-btn" id="btnRec" aria-label="録音スタート">
+          <span class="rec-dot"></span>
+          <span class="rec-btn-text">録音<br>スタート</span>
+        </button>
+        <button class="rec-btn recording hidden" id="btnStop" aria-label="ストップ">
+          <span class="stop-square"></span>
+          <span class="rec-btn-text">ストップ</span>
+        </button>
+      </div>
+
+      <!-- 録音完了後に出るパネル -->
+      <div class="after-rec hidden" id="afterRec">
+        <audio id="previewAudio" controls></audio>
+        <div class="after-rec-btns">
+          <button class="btn btn-ghost" id="btnRetake">🔁 録りなおす</button>
+          <button class="btn btn-primary" id="btnNext">次の人へバトンタッチ ➡️</button>
+          <button class="btn btn-finish hidden" id="btnFinish">🏁 物語をここで完結する</button>
+        </div>
+      </div>
+
+      <p class="mic-error hidden" id="micError">⚠️ マイクが使えませんでした。ブラウザのマイク許可を確認してください。</p>
+    </section>
+
+    <!-- ============ 画面3：全員の録音完了 ============ -->
+    <section class="screen" id="screen-complete">
+      <div class="hero">
+        <p class="hero-step">THE END</p>
+        <h1 class="hero-title">物語、完結！</h1>
+        <p class="hero-sub">みんなでつないだシーンの一覧です。<br>準備ができたら、AIにバトンタッチ！</p>
+      </div>
+
+      <ul class="take-list" id="takeList"></ul>
+
+      <button class="btn btn-primary btn-big" id="btnGenerate">ストーリーを生成する ✨</button>
+      <button class="btn btn-ghost" id="btnRestart">はじめからやりなおす</button>
+    </section>
+
+    <!-- ============ 画面5：生成中 ============ -->
+    <section class="screen" id="screen-loading">
+      <div class="loading-wrap" id="loadingWrap">
+        <div class="loading-disc"></div>
+        <p class="loading-text" id="loadingText">AIが台本会議中…</p>
+        <p class="loading-sub">そのままお待ちください（30秒〜1分くらい）</p>
+      </div>
+      <p class="api-error hidden" id="apiError"></p>
+      <div class="key-form hidden" id="keySwap">
+        <input type="password" id="apiKeySwapInput" placeholder="新しいAPIキーを貼り付け" autocomplete="off">
+        <button class="btn btn-primary" id="btnKeySwapApply">このキーに変更してもどる</button>
+      </div>
+      <button class="btn btn-ghost hidden" id="btnShowKeySwap">🔑 別のAPIキーでためす</button>
+      <button class="btn btn-ghost hidden" id="btnErrorBack">もどる</button>
+    </section>
+
+    <!-- ============ 画面6：あらすじ確認 ============ -->
+    <section class="screen" id="screen-outline">
+      <div class="hero">
+        <p class="hero-step">STORY OUTLINE</p>
+        <h1 class="hero-title">物語のあらすじが<br>できました！</h1>
+        <p class="hero-sub">みんなの録音を、AIがひとつの物語にまとめました。<br>※この内容はAIが生成したものです</p>
+      </div>
+
+      <div class="script-box" id="outlineBox"></div>
+
+      <button class="btn btn-primary btn-big" id="btnToGenre">ジャンルを選んで台本にする 🎬</button>
+      <button class="btn btn-ghost" id="btnRestart3">はじめからやりなおす</button>
+    </section>
+
+    <!-- ============ 画面7：ジャンル選択 ============ -->
+    <section class="screen" id="screen-genre">
+      <div class="hero">
+        <p class="hero-step">CHOOSE GENRE</p>
+        <h1 class="hero-title">どんなドラマに<br>しちゃう？</h1>
+        <p class="hero-sub">あとから別のジャンルで「おかわり」もできます。</p>
+      </div>
+
+      <div class="genre-grid">
+        <button class="genre-btn" data-genre="恋愛・ラブコメ"><span class="genre-emoji">💘</span>恋愛・ラブコメ</button>
+        <button class="genre-btn" data-genre="SF・ファンタジー"><span class="genre-emoji">🚀</span>SF・ファンタジー</button>
+        <button class="genre-btn" data-genre="ミステリー・サスペンス"><span class="genre-emoji">🕵️</span>ミステリー・サスペンス</button>
+        <button class="genre-btn" data-genre="ホラー・怪談"><span class="genre-emoji">👻</span>ホラー・怪談</button>
+        <button class="genre-btn" data-genre="日常・コメディ"><span class="genre-emoji">☀️</span>日常・コメディ</button>
+        <button class="genre-btn" data-genre="歴史・時代劇"><span class="genre-emoji">🏯</span>歴史・時代劇</button>
+      </div>
+    </section>
+
+    <!-- ============ 画面8：台本完成 ============ -->
+    <section class="screen" id="screen-result">
+      <div class="hero">
+        <p class="hero-step">SCRIPT</p>
+        <h1 class="hero-title" id="resultTitle">台本、完成！</h1>
+        <p class="hero-sub">※この台本と音声はAIが生成したものです。<br>再生すると、ジャンルに合ったBGMと効果音が自動でつきます。</p>
+      </div>
+
+      <button class="btn btn-primary btn-big" id="btnSpeak">🔊 音声ドラマにして再生する</button>
+
+      <div class="drama-player hidden" id="dramaPlayer">
+        <div class="title-card">
+          <p class="title-card-presents">RADIO MY STORY <span>presents</span></p>
+          <p class="drama-title" id="dramaTitle">きょうの物語</p>
+          <div class="equalizer" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+        <audio id="dramaAudio" controls></audio>
+        <button class="btn btn-ghost btn-bgm" id="btnBgmToggle">🎵 BGM・効果音：オン</button>
+      </div>
+
+      <div class="script-box" id="scriptBox"></div>
+
+      <button class="btn btn-primary btn-big" id="btnAnotherGenre">別のジャンルでおかわり 🍜</button>
+      <button class="btn btn-ghost" id="btnRestart2">はじめからやりなおす</button>
+    </section>
+
+  </main>
+
+  <script src="gemini.js"></script>
+  <script src="fx.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
