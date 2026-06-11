@@ -283,9 +283,10 @@ async function ttsCall(text, voice, onWait) {
   let sawRateLimit = false;  // 1分あたりの上限に当たった
   let sawDailyLimit = false; // 1日あたりの上限に当たった
   let quotaInfo = "";        // 直近の429の技術情報（原因特定用に画面へ出す）
-  let emptyRetried = false;  // 「音声が空」のやりなおしを使ったか
+  let emptyErrorMsg = "";    // 「音声が空（OTHER等）」が続いたときのエラー文
 
   for (const model of GEMINI_TTS_MODELS) {
+    let emptyRetried = false; // 「音声が空」のやりなおしは、モデルごとに1回ずつ
     for (let attempt = 0; attempt < 4; attempt++) {
       const url =
         "https://generativelanguage.googleapis.com/v1beta/models/" +
@@ -331,14 +332,15 @@ async function ttsCall(text, voice, onWait) {
           const cand = data.candidates?.[0];
           const reason = (cand && cand.finishReason) || (data.promptFeedback && data.promptFeedback.blockReason) || "";
           const aiText = ((cand?.content?.parts || []).map((p) => p.text || "").join("")).trim().slice(0, 150);
-          throw new Error(
+          emptyErrorMsg =
             "AIが音声を返しませんでした。" +
             (/SAFETY|PROHIBITED|BLOCK/i.test(reason)
               ? "台本の表現が安全フィルタに反応した可能性があります。「別のジャンルでおかわり」で台本を作り直すと通ることが多いです。"
               : "もう一度お試しください。") +
             (reason ? "\n〔理由コード: " + reason + "〕" : "") +
-            (aiText ? "\n〔AIの返答: " + aiText + "〕" : "")
-          );
+            (aiText ? "\n〔AIの返答: " + aiText + "〕" : "");
+          console.warn("このモデルでは音声が作れず。次の音声モデルに交代:", model);
+          break; // 別の音声モデルで同じセリフを録り直してみる
         }
         const rateMatch = (part.inlineData.mimeType || "").match(/rate=(\d+)/);
         const bin = atob(part.inlineData.data);
@@ -385,6 +387,9 @@ async function ttsCall(text, voice, onWait) {
       "きょうの利用枠（1日あたりの音声生成回数）を使い切ったようです。" +
       "数分待っても回復しません。枠は毎日、日本時間の夕方ごろにリセットされます。" + diag
     );
+  }
+  if (emptyErrorMsg) {
+    throw new Error(emptyErrorMsg); // 全モデルで「音声が空」だったときの案内
   }
   if (sawRateLimit) {
     throw new Error(
