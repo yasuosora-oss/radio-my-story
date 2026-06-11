@@ -14,6 +14,7 @@ const state = {
   storyOutline: null,  // AIがまとめた「あらすじ」。おかわり時に再利用する
   dramaMarks: [],      // 場面の変わり目の秒数リスト（効果音のタイミング）
   bgmOn: true,         // BGM・効果音のオン／オフ
+  ecoMode: localStorage.getItem("rms_eco") === "1", // 節約モード（前回の選択を記憶）
   currentScript: null, // いま表示中の台本（音声化に使う）
   dramaUrl: null,      // 生成した音声ドラマの再生用URL
 };
@@ -529,11 +530,31 @@ $("btnBgmToggle").addEventListener("click", () => {
   }
 });
 
+/* ---------- 音声生成モードの切り替え ---------- */
+function updateModeButtons() {
+  $("modeRich").classList.toggle("selected", !state.ecoMode);
+  $("modeEco").classList.toggle("selected", state.ecoMode);
+}
+$("modeRich").addEventListener("click", () => {
+  state.ecoMode = false;
+  localStorage.setItem("rms_eco", "0");
+  updateModeButtons();
+});
+$("modeEco").addEventListener("click", () => {
+  state.ecoMode = true;
+  localStorage.setItem("rms_eco", "1");
+  updateModeButtons();
+});
+updateModeButtons();
+
 $("btnSpeak").addEventListener("click", async () => {
-  showLoading(`配役を決めて、声優AIたちを集めています…（数分かかることがあります）`, "result");
+  const startMsg = state.ecoMode
+    ? "1人語りの声優AIを呼んでいます…（節約モード）"
+    : "配役を決めて、声優AIたちを集めています…（数分かかることがあります）";
+  showLoading(startMsg, "result");
   try {
     const result = await generateSpeech(state.currentScript, state.selectedGenre,
-      (msg) => { $("loadingText").textContent = msg; });
+      (msg) => { $("loadingText").textContent = msg; }, state.ecoMode);
     state.dramaUrl = URL.createObjectURL(result.blob);
     state.dramaMarks = result.marks;
     $("dramaTitle").textContent = result.title || `きょうの${state.selectedGenre}`;

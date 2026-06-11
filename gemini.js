@@ -424,12 +424,16 @@ async function ttsSegmentWithFallback(seg, cast, genre, voice, onWait) {
   }
 }
 
-/* 本体：台本を解析し、役ごとに別の声で収録してつなぎ合わせる */
-async function generateSpeech(script, genre, onProgress) {
+/* 本体：台本を解析し、役ごとに別の声で収録してつなぎ合わせる
+   ecoMode=true のときは「節約モード」（1人語り・通信1回）で作る */
+async function generateSpeech(script, genre, onProgress, ecoMode) {
+  if (ecoMode) {
+    return soloSpeech(script, genre, onProgress);
+  }
   const parsed = parseScript(script);
   if (!parsed) {
     // 台本が想定の形式でなかったときの保険：従来の1人語り方式
-    return singleVoiceSpeech(script, genre);
+    return soloSpeech(script, genre, onProgress);
   }
 
   const voices = assignVoices(parsed.cast, genre);
@@ -499,18 +503,37 @@ async function generateSpeech(script, genre, onProgress) {
   return { blob: pcmBytesToWavBlob(joined, rate), marks, title: parsed.title || "" };
 }
 
-/* 保険用：台本全体を1つの声で読み上げる従来方式 */
-async function singleVoiceSpeech(script, genre) {
-  const voice = GENRE_VOICES[genre] || "Kore";
+/* 節約モード：台本全体を1人の声優が通しで演じる（通信1回・利用枠ひかえめ） */
+async function soloSpeech(script, genre, onProgress) {
+  if (onProgress) onProgress("1人語りの声優AIが熱演中…（節約モード）");
+
+  const cacheKey = "SOLO|" + genre + "|" + script;
+  const cached = speechCache.get(cacheKey);
+  if (cached) return cached;
+
+  const voice = GENRE_VOICES[genre] || "Puck";
   const prompt =
     "あなたはプロの声優です。次のラジオドラマ台本を、ジャンル「" + genre + "」の雰囲気たっぷりに、" +
-    "ナレーションと登場人物を感情豊かに演じ分けながら、日本語で読み上げてください。\n" +
+    "ナレーションと登場人物を声色を変えて感情豊かに演じ分けながら、日本語で読み上げてください。\n" +
+    "- まず【タイトル】の題名だけをタイトルコールとしてゆっくり読み、ひと呼吸おいてから本編を読む\n" +
+    "- 【配役】の一覧は読み上げない\n" +
+    "- 「（間・転）」「（間）」のような行は読み上げず、ひと呼吸の間を置く\n" +
     "- 括弧書きの演技指示は読み上げず、直後のセリフ1つだけに反映する\n" +
     "- ナレーションは終始、落ち着いた一定のトーンで読む\n" +
     "- 「ナレーション：」「〇〇：」のような話者名は読み上げない\n\n" + script;
 
-  const audio = await ttsCall(prompt, voice, null);
-  return { blob: pcmBytesToWavBlob(audio.bytes, audio.rate), marks: [], title: "" };
+  const audio = await ttsCall(prompt, voice, () => {
+    if (onProgress) onProgress("AIが混み合っています。順番待ち中…");
+  });
+
+  const parsed = parseScript(script); // タイトル表示用（読み取れなくてもOK）
+  const result = {
+    blob: pcmBytesToWavBlob(audio.bytes, audio.rate),
+    marks: [],
+    title: (parsed && parsed.title) || "",
+  };
+  cacheSet(cacheKey, result);
+  return result;
 }
 
 /* 生のPCMデータに44バイトのWAVヘッダーを付けて、再生可能なBlobにする */

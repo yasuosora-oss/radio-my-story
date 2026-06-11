@@ -492,6 +492,37 @@ body {
 /* BGM・効果音の切り替えボタン */
 .btn-bgm { min-height: 48px; font-size: 14px; }
 
+/* ---------- 音声生成モードの切り替え ---------- */
+.mode-select {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mode-btn {
+  background: var(--bg-panel);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-family: var(--font-ja);
+  font-weight: 800;
+  font-size: 15px;
+  min-height: 72px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all .15s;
+}
+.mode-btn span { font-size: 11px; font-weight: 700; opacity: .8; }
+.mode-btn.selected {
+  border-color: var(--amber);
+  color: var(--text);
+  background: #2a2113;
+  box-shadow: 0 0 0 3px #ffb54722;
+}
+
 /* ---------- タイトルカード（できあがったドラマの看板） ---------- */
 .title-card {
   text-align: center;
